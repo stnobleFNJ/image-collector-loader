@@ -11,12 +11,6 @@ function zip_fail($msg) {
     exit;
 }
 
-// 파일/폴더 이름에 쓸 수 없는 문자 정리
-function safe_name($s) {
-    $s = preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]/u', '_', (string)$s);
-    return trim($s, " .") === '' ? '_' : trim($s, " .");
-}
-
 // 선택 목록 (사업 필터 동일 적용)
 function pick_rows($memId, $bs, $orig) {
     $filter = $bs ? " AND i.bs_id IN (" . implode(',', $bs) . ")" : '';

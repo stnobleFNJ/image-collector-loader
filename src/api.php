@@ -1,9 +1,12 @@
 <?php
 // 확인 페이지 API
-//   GET  act=items  bs=1,2 offset=0  : 선택 사업의 썸네일 목록
+//   GET  act=items  bs=1,2 offset=0  : 선택 사업의 썸네일 목록 (최근 등록순)
 //   GET  act=picks  bs=1,2 [mem=3]   : 내가 선택한 썸네일 (사업 필터 동일 적용, mem 은 총괄 어드민만)
 //   POST act=toggle id=123 on=1|0    : 썸네일 선택/해제
 //   POST act=clear  bs=1,2           : 현재 필터의 선택 전체 해제
+// 이미지 제외 (총괄 어드민 전용)
+//   GET  act=xitems  bs=1,2 offset=0 only=0|1 : 표시 중 + 제외된(D) 썸네일 (only=1 이면 제외된 것만)
+//   POST act=exclude id=123 on=1|0            : 제외(db_state=D) / 복구(Y)
 define('APP_INIT', true);
 require __DIR__ . '/inc/common.php';
 
@@ -41,7 +44,7 @@ if ($act === 'items') {
                FROM NAS_IMG i
                LEFT JOIN NAS_MEMBER_PICK p ON p.mem_id = ? AND p.path_hash = i.path_hash
                WHERE $where
-               ORDER BY i.bs_year DESC, i.img_id
+               ORDER BY i.img_id DESC
                LIMIT ?, ?",
         'iii', array($memId, $offset, PAGE_SIZE + 1));
 
@@ -89,6 +92,60 @@ if ($act === 'toggle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         q("DELETE FROM NAS_MEMBER_PICK WHERE mem_id = ? AND path_hash = ?", 'is', array($memId, $img[0]['path_hash']));
     }
+    json_out(array('ok' => true, 'id' => $id, 'on' => $on));
+}
+
+if (($act === 'xitems' || $act === 'exclude') && empty($member['is_admin'])) {
+    json_out(array('ok' => false, 'error' => '접근 권한이 없습니다.'), 403);
+}
+
+if ($act === 'xitems') {
+    if (!$bs) {
+        json_out(array('ok' => true, 'items' => array(), 'total' => 0, 'excluded' => 0, 'more' => false));
+    }
+    $offset = max(0, isset($_GET['offset']) ? (int)$_GET['offset'] : 0);
+    $only = !empty($_GET['only']);
+    // 현재 사업(bs_id)만 대상: 이전 적재분 D 는 bs_id 가 달라 섞이지 않음
+    $where = "i.thumb IS NOT NULL AND i.bs_id IN (" . bs_in($bs) . ") AND i.db_state " . ($only ? "= 'D'" : "IN ('Y', 'D')");
+
+    $total = null;
+    $excluded = null;
+    if ($offset === 0) {
+        $r = q("SELECT COUNT(*) AS n, IFNULL(SUM(i.db_state = 'D'), 0) AS x FROM NAS_IMG i WHERE $where");
+        $total = (int)$r[0]['n'];
+        $excluded = (int)$r[0]['x'];
+    }
+    $rows = q("SELECT i.img_id AS id, i.file_name AS name, i.bs_id AS bsid, i.bs_name AS bs, i.bs_year AS yr,
+                      (i.db_state = 'D') AS off
+               FROM NAS_IMG i
+               WHERE $where
+               ORDER BY i.img_id DESC
+               LIMIT ?, ?",
+        'ii', array($offset, PAGE_SIZE + 1));
+
+    $more = count($rows) > PAGE_SIZE;
+    if ($more) {
+        array_pop($rows);
+    }
+    foreach ($rows as &$row) {
+        $row['id'] = (int)$row['id'];
+        $row['bsid'] = (int)$row['bsid'];
+        $row['off'] = (bool)$row['off'];
+    }
+    json_out(array('ok' => true, 'items' => $rows, 'total' => $total, 'excluded' => $excluded, 'more' => $more));
+}
+
+if ($act === 'exclude' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+    $on = !empty($_POST['on']);
+    $img = q("SELECT i.img_id FROM NAS_IMG i
+              JOIN NAS_BS b ON b.bs_id = i.bs_id AND b.db_state = 'Y'
+              WHERE i.img_id = ? AND i.db_state IN ('Y', 'D')", 'i', array($id));
+    if (!$img) {
+        json_out(array('ok' => false, 'error' => '이미지를 찾을 수 없습니다.'), 404);
+    }
+    // 회원 선택(NAS_MEMBER_PICK)은 db_state='Y' 와만 연결되므로 제외하면 숨고, 복구하면 다시 보임
+    q("UPDATE NAS_IMG SET db_state = ?, updated_at = NOW() WHERE img_id = ?", 'si', array($on ? 'D' : 'Y', $id));
     json_out(array('ok' => true, 'id' => $id, 'on' => $on));
 }
 

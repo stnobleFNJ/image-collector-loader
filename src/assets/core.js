@@ -53,6 +53,94 @@
         return range;
     }
 
+    // 사업 선택 바 (render_bsbar): 칩 선택 / 사업명 검색 / 펼치기
+    //   multi: 여러 사업 선택 허용, onChange: 사용자가 선택을 바꿀 때
+    function initBsBar(multi, onChange) {
+        var $ = function (id) { return document.getElementById(id); };
+        var chipsEl = $('bsChips'), moreBtn = $('bsToggleMore');
+        var chips = Array.from(chipsEl.querySelectorAll('.chip'));
+        var selected = new Set();  // bs_id
+
+        function render() {
+            chips.forEach(function (c) { c.classList.toggle('on', selected.has(+c.dataset.id)); });
+            $('bsSelCount').textContent = selected.size + '개 선택';
+        }
+        function changed() { render(); onChange(); }
+
+        chipsEl.addEventListener('click', function (e) {
+            var c = e.target.closest('.chip');
+            if (!c) { return; }
+            var id = +c.dataset.id;
+            if (selected.has(id)) {
+                selected.delete(id);
+            } else {
+                if (!multi) { selected.clear(); }
+                selected.add(id);
+            }
+            changed();
+        });
+
+        $('bsClear').addEventListener('click', function () {
+            if (!selected.size) { return; }
+            selected.clear();
+            changed();
+        });
+
+        // 접힘/펼침 상태를 버튼 문구·아이콘·숨은 개수로 표시
+        function setExpanded(open) {
+            chipsEl.classList.toggle('collapsed', !open);
+            moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            moreBtn.querySelector('.toggle-label').textContent = open ? '접기' : '펼치기';
+            updateMoreCount();
+        }
+
+        function updateMoreCount() {
+            var cnt = $('bsMoreCnt');
+            var hiddenN = 0;
+            if (chipsEl.classList.contains('collapsed')) {
+                var limit = chipsEl.getBoundingClientRect().top + chipsEl.clientHeight - 8;
+                chips.forEach(function (c) {
+                    if (!c.hidden && c.getBoundingClientRect().top > limit) { hiddenN++; }
+                });
+            }
+            cnt.hidden = hiddenN === 0;
+            cnt.textContent = '+' + hiddenN;
+            // 숨은 사업이 없으면 펼칠 필요가 없음
+            moreBtn.hidden = hiddenN === 0 && chipsEl.classList.contains('collapsed');
+        }
+
+        moreBtn.addEventListener('click', function () {
+            setExpanded(chipsEl.classList.contains('collapsed'));
+        });
+
+        $('bsFilter').addEventListener('input', function () {
+            var kw = this.value.trim().toLowerCase();
+            chips.forEach(function (c) { c.hidden = kw !== '' && c.dataset.name.toLowerCase().indexOf(kw) < 0; });
+            if (kw) { setExpanded(true); } else { updateMoreCount(); }
+        });
+
+        if (window.ResizeObserver) { new ResizeObserver(updateMoreCount).observe(chipsEl.parentNode); }
+        window.addEventListener('resize', updateMoreCount);
+        updateMoreCount();
+
+        return {
+            chips: chips,
+            selected: selected,
+            // 선택한 사업명 (bs_id 는 재적재 시 바뀌므로 저장은 이름으로)
+            names: function () {
+                return chips.filter(function (c) { return selected.has(+c.dataset.id); })
+                    .map(function (c) { return c.dataset.name; });
+            },
+            // 저장해 둔 사업명으로 선택 복원 (onChange 는 부르지 않음)
+            restore: function (names) {
+                chips.forEach(function (c) {
+                    if (names.indexOf(c.dataset.name) >= 0 && (multi || !selected.size)) { selected.add(+c.dataset.id); }
+                });
+                render();
+            }
+        };
+    }
+
     // 사내망 밖에서 원본 다운로드를 누르면 안내
     document.addEventListener('click', function (e) {
         var b = e.target.closest && e.target.closest('[data-blocked]');
@@ -65,7 +153,7 @@
     function onBroadcast(fn) { if (channel) { channel.onmessage = function (e) { fn(e.data); }; } }
 
     window.FNJ = {
-        store: store, load: load, toast: toast, api: api, initSize: initSize,
+        store: store, load: load, toast: toast, api: api, initSize: initSize, initBsBar: initBsBar,
         broadcast: broadcast, onBroadcast: onBroadcast,
         silent: function (e) { if (e.message !== 'login') { toast(e.message); } }
     };

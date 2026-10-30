@@ -14,27 +14,7 @@ $businesses = business_list();
 
 <?php render_topbar($member, 'check'); ?>
 
-<div class="bsbar-wrap" id="bsbarWrap">
-<section class="bsbar">
-    <div class="bsbar-head">
-        <h2>사업 <small id="bsSelCount">0개 선택</small></h2>
-        <input type="search" id="bsFilter" class="bs-filter" placeholder="사업명 검색">
-        <button type="button" class="btn btn-ghost btn-sm" id="bsClear">선택 해제</button>
-        <button type="button" class="btn btn-ghost btn-sm toggle-more" id="bsToggleMore" aria-expanded="false" aria-controls="bsChips">
-            <span class="toggle-label">펼치기</span><span class="more-cnt" id="bsMoreCnt" hidden></span>
-            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-    </div>
-    <div class="chips collapsed" id="bsChips">
-        <?php foreach ($businesses as $b): ?>
-            <button type="button" class="chip" data-id="<?= (int)$b['bs_id'] ?>" data-name="<?= h($b['bs_name']) ?>"
-                    title="<?= h(trim($b['client'] . ' · ' . $b['bs_years'], ' ·')) ?>">
-                <?= h($b['bs_name']) ?><span class="chip-cnt"><?= number_format($b['cnt']) ?></span>
-            </button>
-        <?php endforeach; ?>
-    </div>
-</section>
-</div>
+<?php render_bsbar($businesses); ?>
 
 <div class="layout">
     <main class="main">

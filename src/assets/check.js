@@ -2,11 +2,14 @@
     'use strict';
 
     var $ = function (id) { return document.getElementById(id); };
-    var chipsEl = $('bsChips'), grid = $('grid'), pickGrid = $('pickGrid'), sentinel = $('sentinel');
+    var grid = $('grid'), pickGrid = $('pickGrid'), sentinel = $('sentinel');
     var LS_BS = 'fnjimg.bs';
 
+    /* ---------- 사업 선택 ---------- */
+    var bar = FNJ.initBsBar(true, onBsChanged);
+
     var state = {
-        bs: new Set(),      // 선택한 bs_id
+        bs: bar.selected,   // 선택한 bs_id
         offset: 0,
         more: false,
         loading: false,
@@ -22,14 +25,8 @@
     // 크기를 줄이면 화면에 빈 공간이 생길 수 있어 추가 로드 확인
     FNJ.initSize(function () { if (state.more && !state.loading && isNearBottom()) { loadGrid(false); } });
 
-    /* ---------- 사업 선택 ---------- */
-    var chips = Array.from(chipsEl.querySelectorAll('.chip'));
-
     function syncBsUi() {
-        chips.forEach(function (c) { c.classList.toggle('on', state.bs.has(+c.dataset.id)); });
-        $('bsSelCount').textContent = state.bs.size + '개 선택';
-        var names = chips.filter(function (c) { return state.bs.has(+c.dataset.id); })
-            .map(function (c) { return c.dataset.name; });
+        var names = bar.names();
         $('gridTitle').textContent = names.length ? names.slice(0, 3).join(', ') + (names.length > 3 ? ' 외 ' + (names.length - 3) + '개' : '') : '썸네일';
         $('pickScope').textContent = names.length ? '선택한 사업 ' + names.length + '개' : '전체 사업';
         $('dlBs').value = bsParam();
@@ -43,55 +40,6 @@
         loadPicks();
     }
 
-    chipsEl.addEventListener('click', function (e) {
-        var c = e.target.closest('.chip');
-        if (!c) { return; }
-        var id = +c.dataset.id;
-        if (state.bs.has(id)) { state.bs.delete(id); } else { state.bs.add(id); }
-        onBsChanged();
-    });
-
-    $('bsClear').addEventListener('click', function () {
-        if (!state.bs.size) { return; }
-        state.bs.clear();
-        onBsChanged();
-    });
-
-    var moreBtn = $('bsToggleMore');
-
-    // 접힘/펼침 상태를 버튼 문구·아이콘·숨은 개수로 표시
-    function setExpanded(open) {
-        chipsEl.classList.toggle('collapsed', !open);
-        moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        moreBtn.querySelector('.toggle-label').textContent = open ? '접기' : '펼치기';
-        updateMoreCount();
-    }
-
-    function updateMoreCount() {
-        var cnt = $('bsMoreCnt');
-        var hiddenN = 0;
-        if (chipsEl.classList.contains('collapsed')) {
-            var limit = chipsEl.getBoundingClientRect().top + chipsEl.clientHeight - 8;
-            chips.forEach(function (c) {
-                if (!c.hidden && c.getBoundingClientRect().top > limit) { hiddenN++; }
-            });
-        }
-        cnt.hidden = hiddenN === 0;
-        cnt.textContent = '+' + hiddenN;
-        // 숨은 사업이 없으면 펼칠 필요가 없음
-        moreBtn.hidden = hiddenN === 0 && chipsEl.classList.contains('collapsed');
-    }
-
-    moreBtn.addEventListener('click', function () {
-        setExpanded(chipsEl.classList.contains('collapsed'));
-    });
-
-    $('bsFilter').addEventListener('input', function () {
-        var kw = this.value.trim().toLowerCase();
-        chips.forEach(function (c) { c.hidden = kw !== '' && c.dataset.name.toLowerCase().indexOf(kw) < 0; });
-        if (kw) { setExpanded(true); } else { updateMoreCount(); }
-    });
-
     /* ---------- 고정 영역 높이 (우측 패널 위치 계산용) ---------- */
     var topbar = document.querySelector('.topbar'), bsbarWrap = $('bsbarWrap');
     function updateStickyOffsets() {
@@ -100,12 +48,11 @@
         document.documentElement.style.setProperty('--stick-h', (th + bsbarWrap.offsetHeight) + 'px');
     }
     if (window.ResizeObserver) {
-        new ResizeObserver(function () { updateStickyOffsets(); updateMoreCount(); }).observe(bsbarWrap);
+        new ResizeObserver(updateStickyOffsets).observe(bsbarWrap);
         new ResizeObserver(updateStickyOffsets).observe(topbar);
     }
-    window.addEventListener('resize', function () { updateStickyOffsets(); updateMoreCount(); });
+    window.addEventListener('resize', updateStickyOffsets);
     updateStickyOffsets();
-    updateMoreCount();
 
     /* ---------- 썸네일 그리드 ---------- */
     function makeTile(it, small) {
@@ -286,6 +233,6 @@
     /* ---------- 시작 ---------- */
     var saved = [];
     try { saved = JSON.parse(load(LS_BS) || '[]'); } catch (e) {}
-    chips.forEach(function (c) { if (saved.indexOf(c.dataset.name) >= 0) { state.bs.add(+c.dataset.id); } });
+    bar.restore(saved);
     onBsChanged();
 })();

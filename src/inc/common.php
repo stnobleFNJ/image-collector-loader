@@ -151,7 +151,11 @@ function render_head($title) {
 // 상단 바: 로고 + 탭 / (썸네일 크기) / 사용자
 function render_topbar($member, $active, $withSize = true) {
     $tabs = array('check' => array('check.php', '이미지 확인'));
+    if (is_local_server()) {
+        $tabs['upload'] = array('upload.php', '신규 이미지 등록');
+    }
     if (!empty($member['is_admin'])) {
+        $tabs['exclude'] = array('exclude.php', '이미지 제외');
         $tabs['admin'] = array('admin.php', '계정 관리');
     }
     ?>
@@ -186,6 +190,33 @@ function render_topbar($member, $active, $withSize = true) {
         <a class="btn btn-ghost btn-sm" href="logout.php">로그아웃</a>
     </div>
 </header>
+    <?php
+}
+
+// 사업 선택 바 (이미지 확인 / 신규 이미지 등록 공용, 동작은 core.js 의 FNJ.initBsBar)
+function render_bsbar($businesses) {
+    ?>
+<div class="bsbar-wrap" id="bsbarWrap">
+<section class="bsbar">
+    <div class="bsbar-head">
+        <h2>사업 <small id="bsSelCount">0개 선택</small></h2>
+        <input type="search" id="bsFilter" class="bs-filter" placeholder="사업명 검색">
+        <button type="button" class="btn btn-ghost btn-sm" id="bsClear">선택 해제</button>
+        <button type="button" class="btn btn-ghost btn-sm toggle-more" id="bsToggleMore" aria-expanded="false" aria-controls="bsChips">
+            <span class="toggle-label">펼치기</span><span class="more-cnt" id="bsMoreCnt" hidden></span>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+    </div>
+    <div class="chips collapsed" id="bsChips">
+        <?php foreach ($businesses as $b): ?>
+            <button type="button" class="chip" data-id="<?= (int)$b['bs_id'] ?>" data-name="<?= h($b['bs_name']) ?>"
+                    title="<?= h(trim($b['client'] . ' · ' . $b['bs_years'], ' ·')) ?>">
+                <?= h($b['bs_name']) ?><span class="chip-cnt"><?= number_format($b['cnt']) ?></span>
+            </button>
+        <?php endforeach; ?>
+    </div>
+</section>
+</div>
     <?php
 }
 
@@ -278,8 +309,12 @@ function business_list() {
 
 // DB 의 NAS 경로를 이 서버에서 읽을 수 있는 경로로 변환
 function nas_path($folder, $file) {
+    return nas_local(rtrim($folder, '\\/') . '\\' . $file);
+}
+
+// DB 형식 전체 경로(\\192.168.0.6\...)를 이 서버에서 읽을 수 있는 경로로 변환
+function nas_local($p) {
     global $_nasFrom, $_nasTo;
-    $p = rtrim($folder, '\\/') . '\\' . $file;
     $rest = null;
     if (isset($_nasFrom) && strpos($p, $_nasFrom) === 0) {
         $rest = substr($p, strlen($_nasFrom));
@@ -362,6 +397,19 @@ function client_ip() {
     return $ip;
 }
 
+// 이 서버가 로컬(사내 PC·서버: 루프백/사설 IP)에서 동작 중인지 — cafe24 같은 외부 호스팅이면 false
+function is_local_server() {
+    $ip = !empty($_SERVER['SERVER_ADDR']) ? $_SERVER['SERVER_ADDR']
+        : (isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '');  // PHP 내장 서버는 SERVER_ADDR 가 없을 수 있음
+    if ($ip === 'localhost') {
+        return true;
+    }
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        return false;
+    }
+    return !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+}
+
 // 사내망에서 접속했는지 ($_officeIps 가 설정되지 않았으면 사내망으로 보지 않음)
 function in_office() {
     global $_officeIps;
@@ -382,6 +430,12 @@ function in_office() {
         }
     }
     return false;
+}
+
+// 파일/폴더 이름에 쓸 수 없는 문자 정리
+function safe_name($s) {
+    $s = preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]/u', '_', (string)$s);
+    return trim($s, " .") === '' ? '_' : trim($s, " .");
 }
 
 // 정수 id 목록 정리
